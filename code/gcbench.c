@@ -1,7 +1,7 @@
 /* gcbench.c -- "GC" Benchmark on ANSI C library
  *
  * $Id$
- * Copyright (c) 2014-2016 Ravenbrook Limited.  See end of file for license.
+ * Copyright (c) 2014-2018 Ravenbrook Limited.  See end of file for license.
  *
  * This is an allocation stress benchmark test for gc pools
  */
@@ -71,22 +71,26 @@ struct gcthread_s {
 
 typedef mps_word_t obj_t;
 
-static obj_t mkvector(mps_ap_t ap, size_t n) {
+static obj_t mkvector(mps_ap_t ap, size_t n)
+{
   mps_word_t v;
   RESMUST(make_dylan_vector(&v, ap, n));
   return v;
 }
 
-static obj_t aref(obj_t v, size_t i) {
+static obj_t aref(obj_t v, size_t i)
+{
   return DYLAN_VECTOR_SLOT(v, i);
 }
 
-static void aset(obj_t v, size_t i, obj_t val) {
+static void aset(obj_t v, size_t i, obj_t val)
+{
   DYLAN_VECTOR_SLOT(v, i) = val;
 }
 
 /* mktree - make a tree of nodes with depth d. */
-static obj_t mktree(mps_ap_t ap, unsigned d, obj_t leaf) {
+static obj_t mktree(mps_ap_t ap, unsigned d, obj_t leaf)
+{
   obj_t tree;
   size_t i;
   if (d <= 0)
@@ -98,7 +102,8 @@ static obj_t mktree(mps_ap_t ap, unsigned d, obj_t leaf) {
   return tree;
 }
 
-static obj_t random_subtree(obj_t tree, unsigned levels) {
+static obj_t random_subtree(obj_t tree, unsigned levels)
+{
   while(tree != objNULL && levels > 0) {
     tree = aref(tree, rnd() % width);
     --levels;
@@ -114,7 +119,8 @@ static obj_t random_subtree(obj_t tree, unsigned levels) {
  * NOTE: Changing preuse will dramatically change how much work
  * is done.  In particular, if preuse==1, the old tree is returned
  * unchanged. */
-static obj_t new_tree(mps_ap_t ap, obj_t oldtree, unsigned d) {
+static obj_t new_tree(mps_ap_t ap, obj_t oldtree, unsigned d)
+{
   obj_t subtree;
   size_t i;
   if (rnd_double() < preuse) {
@@ -133,7 +139,8 @@ static obj_t new_tree(mps_ap_t ap, obj_t oldtree, unsigned d) {
 /* Update tree to be identical tree but with nodes reallocated
  * with probability pupdate.  This avoids writing to vector slots
  * if unecessary. */
-static obj_t update_tree(mps_ap_t ap, obj_t oldtree, unsigned d) {
+static obj_t update_tree(mps_ap_t ap, obj_t oldtree, unsigned d)
+{
   obj_t tree;
   size_t i;
   if (oldtree == objNULL || d == 0)
@@ -156,7 +163,8 @@ static obj_t update_tree(mps_ap_t ap, obj_t oldtree, unsigned d) {
   return tree;
 }
 
-static void *gc_tree(gcthread_t thread) {
+static void *gc_tree(gcthread_t thread)
+{
   unsigned i, j;
   mps_ap_t ap = thread->ap;
   obj_t leaf = pinleaf ? mktree(ap, 1, objNULL) : objNULL;
@@ -173,7 +181,8 @@ static void *gc_tree(gcthread_t thread) {
 }
 
 /* start -- start routine for each thread */
-static void *start(void *p) {
+static void *start(void *p)
+{
   gcthread_t thread = p;
   void *marker;
   RESMUST(mps_thread_reg(&thread->mps_thread, arena));
@@ -290,12 +299,14 @@ static struct {
 } pools[] = {
   {"amc", gc_tree, mps_class_amc},
   {"ams", gc_tree, mps_class_ams},
+  {"awl", gc_tree, mps_class_awl},
 };
 
 
 /* Command-line driver */
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
   int ch;
   unsigned i;
   mps_bool_t seed_specified = FALSE;
@@ -477,7 +488,7 @@ int main(int argc, char *argv[]) {
 
 /* C. COPYRIGHT AND LICENSE
  *
- * Copyright (c) 2014-2016 Ravenbrook Limited <http://www.ravenbrook.com/>.
+ * Copyright (c) 2014-2018 Ravenbrook Limited <http://www.ravenbrook.com/>.
  * All rights reserved.  This is an open source license.  Contact
  * Ravenbrook for commercial licensing options.
  * 

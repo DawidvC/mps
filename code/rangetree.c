@@ -1,56 +1,86 @@
-/* ssw3i3mv.c: STACK SCANNING FOR WIN32 WITH MICROSOFT C
+/* rangetree.c -- binary trees of address ranges
  *
  * $Id$
- * Copyright (c) 2001 Ravenbrook Limited.  See end of file for license.
- *
- * This scans the stack and fixes the registers which may contain roots.
- * See <design/thread-manager/>.
- *
- * REFERENCES
- *
- * "Argument Passing and Naming Conventions"; MSDN; Microsoft Corporation;
- * <http://msdn.microsoft.com/en-us/library/984x0h58%28v=vs.100%29.aspx>.
- *
- * "Calling conventions for different C++ compilers and operating systems";
- * Agner Fog; Copenhagen University College of Engineering; 2012-02-29;
- * <http://agner.org./optimize/calling_conventions.pdf>.
+ * Copyright (C) 2016-2018 Ravenbrook Limited.  See end of file for license.
  */
 
+#include "rangetree.h"
+#include "tree.h"
+#include "range.h"
 #include "mpm.h"
-#include <setjmp.h>
-
-SRCID(ssw3i3mv, "$Id$");
 
 
-Res StackScan(ScanState ss, Word *stackCold,
-              mps_area_scan_t scan_area,
-              void *closure)
+void RangeTreeInit(RangeTree rangeTree, Addr base, Addr limit)
 {
-  jmp_buf jb;
-
-  /* We rely on the fact that Microsoft C's setjmp stores the callee-save
-     registers in the jmp_buf. */
-  (void)setjmp(jb);
-
-  /* These checks will just serve to warn us at compile-time if the
-     setjmp.h header changes to indicate that the registers we want aren't
-     saved any more. */
-  AVER(sizeof(((_JUMP_BUFFER *)jb)->Ebx) == sizeof(Word));
-  AVER(sizeof(((_JUMP_BUFFER *)jb)->Edi) == sizeof(Word));
-  AVER(sizeof(((_JUMP_BUFFER *)jb)->Esi) == sizeof(Word));
-
-  /* Ensure that the callee-save registers will be found by
-     StackScanInner when it's passed the address of the Ebx field. */
-  AVER(offsetof(_JUMP_BUFFER, Edi) == offsetof(_JUMP_BUFFER, Ebx) + 4);
-  AVER(offsetof(_JUMP_BUFFER, Esi) == offsetof(_JUMP_BUFFER, Ebx) + 8);
-
-  return StackScanInner(ss, stackCold, (Word *)&((_JUMP_BUFFER *)jb)->Ebx, 3,
-                        scan_area, closure);
+  AVER(rangeTree != NULL);
+  TreeInit(RangeTreeTree(rangeTree));
+  RangeInit(RangeTreeRange(rangeTree), base, limit);
+  AVERT(RangeTree, rangeTree);
 }
+
+
+void RangeTreeInitFromRange(RangeTree rangeTree, Range range)
+{
+  AVER(rangeTree != NULL);
+  TreeInit(RangeTreeTree(rangeTree));
+  RangeCopy(RangeTreeRange(rangeTree), range);
+  AVERT(RangeTree, rangeTree);
+}
+
+
+Bool RangeTreeCheck(RangeTree rangeTree)
+{
+  CHECKL(rangeTree != NULL);
+  CHECKD_NOSIG(Tree, RangeTreeTree(rangeTree));
+  CHECKD_NOSIG(Range, RangeTreeRange(rangeTree));
+  return TRUE;
+}
+
+
+void RangeTreeFinish(RangeTree rangeTree)
+{
+  AVERT(RangeTree, rangeTree);
+  TreeFinish(RangeTreeTree(rangeTree));
+  RangeFinish(RangeTreeRange(rangeTree));
+}
+
+
+/* RangeTreeCompare -- Compare key to [base,limit)
+ *
+ * See <design/splay/#type.splay.compare.method>
+ */
+
+Compare RangeTreeCompare(Tree tree, TreeKey key)
+{
+  Addr base1, base2, limit2;
+  RangeTree block;
+
+  AVERT_CRITICAL(Tree, tree);
+  AVER_CRITICAL(tree != TreeEMPTY);
+  AVER_CRITICAL(key != NULL);
+
+  base1 = RangeTreeBaseOfKey(key);
+  block = RangeTreeOfTree(tree);
+  base2 = RangeTreeBase(block);
+  limit2 = RangeTreeLimit(block);
+
+  if (base1 < base2)
+    return CompareLESS;
+  else if (base1 >= limit2)
+    return CompareGREATER;
+  else
+    return CompareEQUAL;
+}
+
+TreeKey RangeTreeKey(Tree tree)
+{
+  return RangeTreeKeyOfBaseVar(RangeTreeBase(RangeTreeOfTree(tree)));
+}
+
 
 /* C. COPYRIGHT AND LICENSE
  *
- * Copyright (C) 2001-2002 Ravenbrook Limited <http://www.ravenbrook.com/>.
+ * Copyright (C) 2016-2018 Ravenbrook Limited <http://www.ravenbrook.com/>.
  * All rights reserved.  This is an open source license.  Contact
  * Ravenbrook for commercial licensing options.
  * 

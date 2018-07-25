@@ -1,7 +1,7 @@
 /* lockw3.c: RECURSIVE LOCKS IN WIN32
  *
  * $Id$
- * Copyright (c) 2001-2016 Ravenbrook Limited.  See end of file for license.
+ * Copyright (c) 2001-2018 Ravenbrook Limited.  See end of file for license.
  *
  * .design: These are implemented using critical sections.
  *  See the section titled "Synchronization functions" in the Groups
@@ -23,8 +23,8 @@
 
 #include "mpm.h"
 
-#ifndef MPS_OS_W3
-#error "lockw3.c is specific to Win32 but MPS_OS_W3 not defined"
+#if !defined(MPS_OS_W3)
+#error "lockw3.c is specific to MPS_OS_W3"
 #endif
 
 #include "mpswin.h"
@@ -127,16 +127,41 @@ static Lock globalLock = &globalLockStruct;
 static Lock globalRecLock = &globalRecLockStruct;
 static Bool globalLockInit = FALSE; /* TRUE iff initialized */
 
+void LockInitGlobal(void)
+{
+  globalLock->claims = 0;
+  LockInit(globalLock);
+  globalRecLock->claims = 0;
+  LockInit(globalRecLock);
+  globalLockInit = TRUE;
+}
+
+/* lockEnsureGlobalLock -- one-time initialization of global locks
+ *
+ * InitOnceExecuteOnce ensures that only one thread can be running the
+ * callback at a time, which allows to safely check globalLockInit. See
+ * <https://docs.microsoft.com/en-us/windows/desktop/api/synchapi/nf-synchapi-initonceexecuteonce>
+ * but note that at time of writing (2018-06-27) the documentation has
+ * the arguments the wrong way round (parameter comes before context).
+ */
+
+static BOOL CALLBACK lockEnsureGlobalLockCallback(INIT_ONCE *init_once, void *parameter, void **context)
+{
+  UNUSED(init_once);
+  AVER(parameter == UNUSED_POINTER);
+  UNUSED(context);
+  if (!globalLockInit) {
+    LockInitGlobal();
+  }
+  return TRUE;
+}
 
 static void lockEnsureGlobalLock(void)
 {
-  /* Ensure both global locks have been initialized. */
-  /* There is a race condition initializing them. */
-  if (!globalLockInit) {
-    LockInit(globalLock);
-    LockInit(globalRecLock);
-    globalLockInit = TRUE;
-  }
+  static INIT_ONCE init_once = INIT_ONCE_STATIC_INIT;
+  BOOL b = InitOnceExecuteOnce(&init_once, lockEnsureGlobalLockCallback,
+                               UNUSED_POINTER, NULL);
+  AVER(b);
 }
 
 void (LockClaimGlobalRecursive)(void)
@@ -165,6 +190,10 @@ void (LockReleaseGlobal)(void)
   LockRelease(globalLock);
 }
 
+void LockSetup(void)
+{
+  /* Nothing to do as MPS does not support fork() on Windows. */
+}
 
 #elif defined(LOCK_NONE)
 #include "lockan.c"
@@ -175,7 +204,7 @@ void (LockReleaseGlobal)(void)
 
 /* C. COPYRIGHT AND LICENSE
  *
- * Copyright (C) 2001-2016 Ravenbrook Limited <http://www.ravenbrook.com/>.
+ * Copyright (C) 2001-2018 Ravenbrook Limited <http://www.ravenbrook.com/>.
  * All rights reserved.  This is an open source license.  Contact
  * Ravenbrook for commercial licensing options.
  * 

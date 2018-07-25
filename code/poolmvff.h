@@ -1,43 +1,38 @@
-/* ssan.c: ANSI STACK SCANNER
+/* poolmvff.h: First Fit Manual Variable Pool
  *
  * $Id$
- * Copyright (c) 2001 Ravenbrook Limited.  See end of file for license.
+ * Copyright (c) 2001-2018 Ravenbrook Limited.  See end of file for license.
+ * Portions copyright (C) 2002 Global Graphics Software.
  *
- * This module makes a best effort to scan the stack and fix the
- * registers which may contain roots, using only the features of the
- * Standard C library.
- * 
- * .assume.setjmp: The implementation assumes that setjmp stores all
- * the registers that need to be scanned in the jmp_buf.
+ * .purpose: This is a pool class for manually managed objects of
+ * variable size where address-ordered first (or last) fit is an
+ * appropriate policy.
+ *
+ * .design: See <design/poolmvff/>
  */
 
-#include <setjmp.h>
+#ifndef poolmvff_h
+#define poolmvff_h
+
 
 #include "mpmtypes.h"
-#include "misc.h"
-#include "ss.h"
+#include "mpscmvff.h"
+
+typedef struct MVFFStruct *MVFF;
+
+extern PoolClass PoolClassMVFF(void);
+
+extern Bool MVFFCheck(MVFF mvff);
+
+#define MVFFPool(mvff) (&(mvff)->poolStruct)
 
 
-SRCID(ssan, "$Id$");
-
-
-Res StackScan(ScanState ss, Word *stackCold,
-              mps_area_scan_t scan_area,
-              void *closure)
-{
-  jmp_buf jb;
-  Word *stackHot = (void *)&jb;
-
-  (void)setjmp(jb);
-
-  return StackScanInner(ss, stackCold, stackHot, sizeof jb / sizeof(Word),
-                        scan_area, closure);
-}
+#endif /* poolmvff_h */
 
 
 /* C. COPYRIGHT AND LICENSE
  *
- * Copyright (C) 2001-2002 Ravenbrook Limited <http://www.ravenbrook.com/>.
+ * Copyright (C) 2001-2018 Ravenbrook Limited <http://www.ravenbrook.com/>.
  * All rights reserved.  This is an open source license.  Contact
  * Ravenbrook for commercial licensing options.
  * 

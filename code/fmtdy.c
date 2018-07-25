@@ -1,7 +1,7 @@
 /* fmtdy.c: DYLAN OBJECT FORMAT IMPLEMENTATION
  *
  *  $Id$
- *  Copyright (c) 2001-2014 Ravenbrook Limited.  See end of file for license.
+ *  Copyright (c) 2001-2018 Ravenbrook Limited.  See end of file for license.
  *  Portions copyright (c) 2002 Global Graphics Software.
  *
  * .readership: MPS developers, Dylan developers
@@ -236,7 +236,7 @@ static mps_res_t dylan_scan_contig(mps_ss_t mps_ss,
 /* dylan_weak_dependent -- returns the linked object, if any.
  */
 
-extern mps_addr_t dylan_weak_dependent(mps_addr_t parent)
+mps_addr_t dylan_weak_dependent(mps_addr_t parent)
 {
   mps_word_t *object;
   mps_word_t *wrapper;
@@ -366,7 +366,7 @@ static mps_res_t dylan_scan_pat(mps_ss_t mps_ss,
    (_vt) << ((_es) - FMTDY_WORD_SHIFT))
 
 
-extern mps_res_t dylan_scan1(mps_ss_t mps_ss, mps_addr_t *object_io)
+mps_res_t dylan_scan1(mps_ss_t mps_ss, mps_addr_t *object_io)
 {
   mps_addr_t *p;        /* cursor in object */
   mps_addr_t *q;        /* cursor limit for loops */
@@ -407,8 +407,11 @@ extern mps_res_t dylan_scan1(mps_ss_t mps_ss, mps_addr_t *object_io)
     return MPS_RES_OK;
   }
 
-  res = mps_fix(mps_ss, p);     /* fix the wrapper */
-  if ( res != MPS_RES_OK ) return res;
+  MPS_SCAN_BEGIN(mps_ss) {
+    res = MPS_FIX12(mps_ss, p); /* fix the wrapper */
+  } MPS_SCAN_END(mps_ss);
+  if (res != MPS_RES_OK)
+    return res;
   w = (mps_word_t *)p[0];       /* wrapper is header word */
   assert(dylan_wrapper_check(w));
 
@@ -546,7 +549,7 @@ static mps_addr_t dylan_class(mps_addr_t obj)
     return (mps_addr_t)first_word;
 }
 
-extern mps_res_t dylan_scan1_weak(mps_ss_t mps_ss, mps_addr_t *object_io)
+mps_res_t dylan_scan1_weak(mps_ss_t mps_ss, mps_addr_t *object_io)
 {
   mps_addr_t *assoc;
   mps_addr_t *base;
@@ -567,8 +570,11 @@ extern mps_res_t dylan_scan1_weak(mps_ss_t mps_ss, mps_addr_t *object_io)
   assert((h & 3) == 0);
   unused(h);
   
-  res = mps_fix(mps_ss, p);
-  if ( res != MPS_RES_OK ) return res;
+  MPS_SCAN_BEGIN(mps_ss) {
+    res = MPS_FIX12(mps_ss, p);
+  } MPS_SCAN_END(mps_ss);
+  if (res != MPS_RES_OK)
+    return res;
 
   /* w points to wrapper */
   w = (mps_word_t *)p[0];
@@ -852,7 +858,7 @@ mps_res_t dylan_fmt_weak(mps_fmt_t *mps_fmt_o, mps_arena_t arena)
 
 /* C. COPYRIGHT AND LICENSE
  *
- * Copyright (C) 2001-2014 Ravenbrook Limited <http://www.ravenbrook.com/>.
+ * Copyright (C) 2001-2018 Ravenbrook Limited <http://www.ravenbrook.com/>.
  * All rights reserved.  This is an open source license.  Contact
  * Ravenbrook for commercial licensing options.
  * 

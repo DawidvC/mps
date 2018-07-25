@@ -23,7 +23,7 @@ mpscams.h    :ref:`pool-ams` pool class external interface.
 mpscawl.h    :ref:`pool-awl` pool class external interface.
 mpsclo.h     :ref:`pool-lo` pool class external interface.
 mpscmfs.h    :ref:`pool-mfs` pool class external interface.
-mpscmv.h     :ref:`pool-mv` pool class external interface.
+mpscmv.h     Deprecated MV (Manual Variable) pool class external interface.
 mpscmv2.h    Former (deprecated) :ref:`pool-mvt` pool class interface.
 mpscmvff.h   :ref:`pool-mvff` pool class external interface.
 mpscmvt.h    :ref:`pool-mvt` pool class external interface.
@@ -124,6 +124,8 @@ protocol.c    Inheritance protocol implementation. See design.mps.protocol_.
 protocol.h    Inheritance protocol interface. See design.mps.protocol_.
 range.c       Address ranges implementation. See design.mps.range_.
 range.h       Address ranges interface. See design.mps.range_.
+rangetree.c   Binary address-ordered range tree implementation.
+rangetree.h   Binary address-ordered range tree interface.
 ref.c         Ranks and zones implementation.
 ring.c        Ring implementation. See design.mps.ring_.
 ring.h        Ring interface. See design.mps.ring_.
@@ -180,37 +182,30 @@ prmcw3.c      Mutator context implementation for Windows.
 prmcw3.h      Mutator context interface for Windows.
 prmcw3i3.c    Mutator context implementation for Windows, IA-32.
 prmcw3i6.c    Mutator context implementation for Windows, x86-64.
-prmcxc.c      Mutator context implementation for OS X.
-prmcxc.h      Mutator context interface for OS X.
-prmcxci3.c    Mutator context implementation for OS X, IA-32.
-prmcxci6.c    Mutator context implementation for OS X, x86-64.
+prmcxc.c      Mutator context implementation for macOS.
+prmcxc.h      Mutator context interface for macOS.
+prmcxci3.c    Mutator context implementation for macOS, IA-32.
+prmcxci6.c    Mutator context implementation for macOS, x86-64.
 prot.h        Protection interface. See design.mps.prot_.
 protan.c      Protection implementation for standard C.
 protix.c      Protection implementation for POSIX.
 protsgix.c    Protection implementation for POSIX (signals part).
 protw3.c      Protection implementation for Windows.
-protxc.c      Protection implementation for OS X.
-protxc.h      Protection interface for OS X.
+protxc.c      Protection implementation for macOS.
+protxc.h      Protection interface for macOS.
 pthrdext.c    Protection implementation for POSIX (threads part).
 pthrdext.h    Protection interface for POSIX (threads part).
 sp.h          Stack probe interface. See design.mps.sp_.
 span.c        Stack probe implementation for standard C.
 spw3i3.c      Stack probe implementation for Windows, IA-32.
 spw3i6.c      Stack probe implementation for Windows, x86-64.
-ss.c          Stack scanning implementation (common part).
-ss.h          Stack scanning interface. See design.mps.ss_.
-ssan.c        Stack scanning implementation for standard C.
-ssixi3.c      Stack scanning implementation for POSIX, IA-32.
-ssixi6.c      Stack scanning implementation for POSIX, x86-64.
-ssw3i3mv.c    Stack scanning implementation for Windows, IA-32, Visual C.
-ssw3i3pc.c    Stack scanning implementation for Windows, IA-32, Pelles C.
-ssw3i6mv.c    Stack scanning implementation for Windows, x86-64, Visual C.
-ssw3i6pc.c    Stack scanning implementation for Windows, x86-64, Pelles C.
+ss.c          Stack scanning implementation.
+ss.h          Stack scanning interface. See design.mps.stack-scan_.
 th.h          Threads interface. See design.mps.thread-manager_.
 than.c        Threads implementation for standard C.
 thix.c        Threads implementation for POSIX.
 thw3.c        Threads implementation for Windows.
-thxc.c        Threads implementation for OS X.
+thxc.c        Threads implementation for macOS.
 vm.c          Virtual memory implementation (common part).
 vm.h          Virtual memory interface. See design.mps.vm_.
 vman.c        Virtual memory implementation for standard C.
@@ -223,7 +218,7 @@ Pool classes
 ------------
 
 These files implement the supported :term:`pool classes`. Some of
-these (MFS, MV) are used internally by the MPS; the others are
+these (MFS, MVFF) are used internally by the MPS; the others are
 available for :term:`client programs` only. See :ref:`pool`.
 
 ===========  ==================================================================
@@ -236,11 +231,10 @@ poolawl.c    :ref:`pool-awl` implementation.
 poollo.c     :ref:`pool-lo` implementation.
 poolmfs.c    :ref:`pool-mfs` implementation.
 poolmfs.h    :ref:`pool-mfs` internal interface.
-poolmv.c     :ref:`pool-mv` implementation.
-poolmv.h     :ref:`pool-mv` internal interface.
 poolmv2.c    :ref:`pool-amc` implementation.
 poolmv2.h    :ref:`pool-mvt` internal interface.
 poolmvff.c   :ref:`pool-mvff` implementation.
+poolmvff.h   :ref:`pool-mvff` internal interface.
 poolsnc.c    :ref:`pool-snc` implementation.
 ===========  ==================================================================
 
@@ -349,6 +343,7 @@ expt825.c         Regression test for job000825_.
 fbmtest.c         Free block manager (CBS and Freelist) test.
 finalcv.c         :ref:`topic-finalization` coverage test.
 finaltest.c       :ref:`topic-finalization` test.
+forktest.c        :ref:`topic-thread-fork` test.
 fotest.c          Failover allocator test.
 landtest.c        Land test.
 locbwcss.c        Locus backwards compatibility stress test.
@@ -367,7 +362,7 @@ sacss.c           :ref:`topic-cache` stress test.
 segsmss.c         Segment splitting and merging stress test.
 steptest.c        :c:func:`mps_arena_step` test.
 tagtest.c         Tagged pointer scanning test.
-walkt0.c          Formatted object walking test.
+walkt0.c          Roots and formatted objects walking test.
 zcoll.c           Garbage collection progress test.
 zmess.c           Garbage collection and finalization message test.
 ================  =============================================================
@@ -405,6 +400,8 @@ w3i3pc.nmk     NMAKE file for platform W3I3PC.
 w3i6mv.nmk     NMAKE file for platform W3I6MV.
 w3i6pc.nmk     NMAKE file for platform W3I6PC.
 xci3gc.gmk     GNU makefile for platform XCI3GC.
+xci3ll.gmk     GNU makefile for platform XCI3LL.
+xci6gc.gmk     GNU makefile for platform XCI6GC.
 xci6ll.gmk     GNU makefile for platform XCI6LL.
 =============  ================================================================
 
@@ -435,7 +432,7 @@ xci6ll.gmk     GNU makefile for platform XCI6LL.
 .. _design.mps.shield: design/shield.html
 .. _design.mps.sp: design/sp.html
 .. _design.mps.splay: design/splay.html
-.. _design.mps.ss: design/ss.html
+.. _design.mps.stack-scan: design/stack-scan.html
 .. _design.mps.strategy: design/strategy.html
 .. _design.mps.tests: design/tests.html
 .. _design.mps.testthr: design/testthr.html

@@ -1,7 +1,7 @@
 /* locus.c: LOCUS MANAGER
  *
  * $Id$
- * Copyright (c) 2001-2016 Ravenbrook Limited.  See end of file for license.
+ * Copyright (c) 2001-2018 Ravenbrook Limited.  See end of file for license.
  *
  * DESIGN
  *
@@ -107,7 +107,7 @@ Bool GenDescCheck(GenDesc gen)
 {
   CHECKS(GenDesc, gen);
   /* nothing to check for zones */
-  /* nothing to check for capacity */
+  CHECKL(gen->capacity > 0);
   CHECKL(gen->mortality >= 0.0);
   CHECKL(gen->mortality <= 1.0);
   CHECKD_NOSIG(Ring, &gen->locusRing);
@@ -123,6 +123,7 @@ static Bool GenParamCheck(GenParamStruct *params)
 {
   CHECKL(params != NULL);
   CHECKL(params->capacity > 0);
+  CHECKL(params->capacity <= SizeMAX / 1024);
   CHECKL(params->mortality >= 0.0);
   CHECKL(params->mortality <= 1.0);
   return TRUE;
@@ -133,13 +134,19 @@ static Bool GenParamCheck(GenParamStruct *params)
 
 static void GenDescInit(GenDesc gen, GenParamStruct *params)
 {
+  TraceId ti;
+
   AVER(gen != NULL);
   AVER(GenParamCheck(params));
+
   gen->zones = ZoneSetEMPTY;
-  gen->capacity = params->capacity;
+  gen->capacity = params->capacity * 1024;
   gen->mortality = params->mortality;
   RingInit(&gen->locusRing);
   RingInit(&gen->segRing);
+  gen->activeTraces = TraceSetEMPTY;
+  for (ti = 0; ti < TraceLIMIT; ++ti)
+    RingInit(&gen->trace[ti].traceRing);
   gen->sig = GenDescSig;
   AVERT(GenDesc, gen);
 }
@@ -149,10 +156,16 @@ static void GenDescInit(GenDesc gen, GenParamStruct *params)
 
 static void GenDescFinish(GenDesc gen)
 {
+  TraceId ti;
+
   AVERT(GenDesc, gen);
+
+  gen->sig = SigInvalid;
   RingFinish(&gen->locusRing);
   RingFinish(&gen->segRing);
-  gen->sig = SigInvalid;
+  AVER(gen->activeTraces == TraceSetEMPTY); /* <design/check/#.common> */
+  for (ti = 0; ti < TraceLIMIT; ++ti)
+    RingFinish(&gen->trace[ti].traceRing);
 }
 
 
@@ -176,40 +189,47 @@ Size GenDescNewSize(GenDesc gen)
 
 /* genDescTraceStart -- notify generation of start of a trace */
 
-static void genDescStartTrace(GenDesc gen, Trace trace)
+void GenDescStartTrace(GenDesc gen, Trace trace)
 {
-  GenTraceStats stats;
+  GenTrace genTrace;
 
   AVERT(GenDesc, gen);
   AVERT(Trace, trace);
 
-  stats = &gen->trace[trace->ti];
-  stats->condemned = 0;
-  stats->forwarded = 0;
-  stats->preservedInPlace = 0;
+  AVER(!TraceSetIsMember(gen->activeTraces, trace));
+  gen->activeTraces = TraceSetAdd(gen->activeTraces, trace);
+  genTrace = &gen->trace[trace->ti];
+  AVER(RingIsSingle(&genTrace->traceRing));
+  RingAppend(&trace->genRing, &genTrace->traceRing);
+  genTrace->condemned = 0;
+  genTrace->forwarded = 0;
+  genTrace->preservedInPlace = 0;
 }
 
 
 /* genDescEndTrace -- notify generation of end of a trace */
 
-static void genDescEndTrace(GenDesc gen, Trace trace)
+void GenDescEndTrace(GenDesc gen, Trace trace)
 {
-  GenTraceStats stats;
+  GenTrace genTrace;
   Size survived;
 
   AVERT(GenDesc, gen);
   AVERT(Trace, trace);
 
-  stats = &gen->trace[trace->ti];
-  survived = stats->forwarded + stats->preservedInPlace;
-  AVER(survived <= stats->condemned);
+  AVER(TraceSetIsMember(gen->activeTraces, trace));
+  gen->activeTraces = TraceSetDel(gen->activeTraces, trace);
+  genTrace = &gen->trace[trace->ti];
+  RingRemove(&genTrace->traceRing);
+  survived = genTrace->forwarded + genTrace->preservedInPlace;
+  AVER(survived <= genTrace->condemned);
 
-  if (stats->condemned > 0) {
-    double mortality = 1.0 - survived / (double)stats->condemned;
+  if (genTrace->condemned > 0) {
+    double mortality = 1.0 - survived / (double)genTrace->condemned;
     double alpha = LocusMortalityALPHA;
     gen->mortality = gen->mortality * (1 - alpha) + mortality * alpha;
-    EVENT6(TraceEndGen, trace, gen, stats->condemned, stats->forwarded,
-           stats->preservedInPlace, gen->mortality);
+    EVENT6(TraceEndGen, trace, gen, genTrace->condemned, genTrace->forwarded,
+           genTrace->preservedInPlace, gen->mortality);
   }
 }
 
@@ -218,13 +238,13 @@ static void genDescEndTrace(GenDesc gen, Trace trace)
 
 void GenDescCondemned(GenDesc gen, Trace trace, Size size)
 {
-  GenTraceStats stats;
+  GenTrace genTrace;
 
   AVERT(GenDesc, gen);
   AVERT(Trace, trace);
 
-  stats = &gen->trace[trace->ti];
-  stats->condemned += size;
+  genTrace = &gen->trace[trace->ti];
+  genTrace->condemned += size;
   trace->condemned += size;
 }
 
@@ -234,14 +254,14 @@ void GenDescCondemned(GenDesc gen, Trace trace, Size size)
 void GenDescSurvived(GenDesc gen, Trace trace, Size forwarded,
                      Size preservedInPlace)
 {
-  GenTraceStats stats;
+  GenTrace genTrace;
 
   AVERT(GenDesc, gen);
   AVERT(Trace, trace);
 
-  stats = &gen->trace[trace->ti];
-  stats->forwarded += forwarded;
-  stats->preservedInPlace += preservedInPlace;
+  genTrace = &gen->trace[trace->ti];
+  genTrace->forwarded += forwarded;
+  genTrace->preservedInPlace += preservedInPlace;
   trace->forwardedSize += forwarded;
   trace->preservedInPlaceSize += preservedInPlace;
 }
@@ -281,19 +301,20 @@ Res GenDescDescribe(GenDesc gen, mps_lib_FILE *stream, Count depth)
   res = WriteF(stream, depth,
                "GenDesc $P {\n", (WriteFP)gen,
                "  zones $B\n", (WriteFB)gen->zones,
-               "  capacity $W\n", (WriteFW)gen->capacity,
+               "  capacity $U\n", (WriteFW)gen->capacity,
                "  mortality $D\n", (WriteFD)gen->mortality,
+               "  activeTraces $B\n", (WriteFB)gen->activeTraces,
                NULL);
   if (res != ResOK)
     return res;
 
   for (i = 0; i < NELEMS(gen->trace); ++i) {
-    GenTraceStats stats = &gen->trace[i];
+    GenTrace genTrace = &gen->trace[i];
     res = WriteF(stream, depth + 2,
-                 "trace $W {\n", (WriteFW)i,
-                 "  condemned $W\n", (WriteFW)stats->condemned,
-                 "  forwarded $W\n", (WriteFW)stats->forwarded,
-                 "  preservedInPlace $W\n", (WriteFW)stats->preservedInPlace,
+                 "trace $U {\n", (WriteFW)i,
+                 "  condemned $U\n", (WriteFW)genTrace->condemned,
+                 "  forwarded $U\n", (WriteFW)genTrace->forwarded,
+                 "  preservedInPlace $U\n", (WriteFW)genTrace->preservedInPlace,
                  "}\n", NULL);
     if (res != ResOK)
       return res;
@@ -323,7 +344,6 @@ static void ChainInit(ChainStruct *chain, Arena arena, GenDescStruct *gens,
 
   chain->arena = arena;
   RingInit(&chain->chainRing);
-  chain->activeTraces = TraceSetEMPTY;
   chain->genCount = genCount;
   chain->gens = gens;
   chain->sig = ChainSig;
@@ -340,6 +360,7 @@ Res ChainCreate(Chain *chainReturn, Arena arena, size_t genCount,
                 GenParamStruct *params)
 {
   size_t i;
+  Size size;
   Chain chain;
   GenDescStruct *gens;
   Res res;
@@ -350,27 +371,19 @@ Res ChainCreate(Chain *chainReturn, Arena arena, size_t genCount,
   AVER(genCount > 0);
   AVER(params != NULL);
 
-  res = ControlAlloc(&p, arena, genCount * sizeof(GenDescStruct));
+  size = sizeof(ChainStruct) + genCount * sizeof(GenDescStruct);
+  res = ControlAlloc(&p, arena, size);
   if (res != ResOK)
     return res;
-  gens = (GenDescStruct *)p;
+  chain = p;
+  gens = PointerAdd(p, sizeof(ChainStruct));
 
   for (i = 0; i < genCount; ++i)
     GenDescInit(&gens[i], &params[i]);
-
-  res = ControlAlloc(&p, arena, sizeof(ChainStruct));
-  if (res != ResOK)
-    goto failChainAlloc;
-  chain = (Chain)p;
-
   ChainInit(chain, arena, gens, genCount);
 
   *chainReturn = chain;
   return ResOK;
-
-failChainAlloc:
-  ControlFree(arena, gens, genCount * sizeof(GenDescStruct));
-  return res;
 }
 
 
@@ -383,7 +396,6 @@ Bool ChainCheck(Chain chain)
   CHECKS(Chain, chain);
   CHECKU(Arena, chain->arena);
   CHECKD_NOSIG(Ring, &chain->chainRing);
-  CHECKL(TraceSetCheck(chain->activeTraces));
   CHECKL(chain->genCount > 0);
   for (i = 0; i < chain->genCount; ++i) {
     CHECKD(GenDesc, &chain->gens[i]);
@@ -397,11 +409,11 @@ Bool ChainCheck(Chain chain)
 void ChainDestroy(Chain chain)
 {
   Arena arena;
+  Size size;
   size_t genCount;
   size_t i;
 
   AVERT(Chain, chain);
-  AVER(chain->activeTraces == TraceSetEMPTY); /* <design/check/#.common> */
 
   arena = chain->arena;
   genCount = chain->genCount;
@@ -412,8 +424,8 @@ void ChainDestroy(Chain chain)
 
   RingFinish(&chain->chainRing);
 
-  ControlFree(arena, chain->gens, genCount * sizeof(GenDescStruct));
-  ControlFree(arena, chain, sizeof(ChainStruct));
+  size = sizeof(ChainStruct) + genCount * sizeof(GenDescStruct);
+  ControlFree(arena, chain, size);
 }
 
 
@@ -449,48 +461,17 @@ double ChainDeferral(Chain chain)
 
   AVERT(Chain, chain);
 
-  if (chain->activeTraces == TraceSetEMPTY) {
-    for (i = 0; i < chain->genCount; ++i) {
-      double genTime = chain->gens[i].capacity * 1024.0
-        - (double)GenDescNewSize(&chain->gens[i]);
-      if (genTime < time)
-        time = genTime;
-    }
+  for (i = 0; i < chain->genCount; ++i) {
+    double genTime;
+    GenDesc gen = &chain->gens[i];
+    if (gen->activeTraces != TraceSetEMPTY)
+      return DBL_MAX;
+    genTime = (double)gen->capacity - (double)GenDescNewSize(&chain->gens[i]);
+    if (genTime < time)
+      time = genTime;
   }
 
   return time;
-}
-
-
-/* ChainStartTrace -- called to notify start of GC for this chain */
-
-void ChainStartTrace(Chain chain, Trace trace)
-{
-  Index i;
-
-  AVERT(Chain, chain);
-  AVERT(Trace, trace);
-
-  chain->activeTraces = TraceSetAdd(chain->activeTraces, trace);
-
-  for (i = 0; i < chain->genCount; ++i)
-    genDescStartTrace(&chain->gens[i], trace);
-}
-
-
-/* ChainEndTrace -- called to notify end of GC for this chain */
-
-void ChainEndTrace(Chain chain, Trace trace)
-{
-  Index i;
-
-  AVERT(Chain, chain);
-  AVERT(Trace, trace);
-
-  chain->activeTraces = TraceSetDel(chain->activeTraces, trace);
-
-  for (i = 0; i < chain->genCount; ++i)
-    genDescEndTrace(&chain->gens[i], trace);
 }
 
 
@@ -509,7 +490,6 @@ Res ChainDescribe(Chain chain, mps_lib_FILE *stream, Count depth)
   res = WriteF(stream, depth,
                "Chain $P {\n", (WriteFP)chain,
                "  arena $P\n", (WriteFP)chain->arena,
-               "  activeTraces $B\n", (WriteFB)chain->activeTraces,
                NULL);
   if (res != ResOK)
     return res;
@@ -605,11 +585,11 @@ static void PoolGenAccountForAlloc(PoolGen pgen, Size size)
 
 /* PoolGenAlloc -- allocate a segment in a pool generation
  *
- * Allocate a GCSeg, attach it to the generation, and update the
- * accounting.
+ * Allocate a segment belong to klass (which must be GCSegClass or a
+ * subclass), attach it to the generation, and update the accounting.
  */
 
-Res PoolGenAlloc(Seg *segReturn, PoolGen pgen, SegClass class, Size size,
+Res PoolGenAlloc(Seg *segReturn, PoolGen pgen, SegClass klass, Size size,
                  ArgList args)
 {
   LocusPrefStruct pref;
@@ -621,7 +601,8 @@ Res PoolGenAlloc(Seg *segReturn, PoolGen pgen, SegClass class, Size size,
 
   AVER(segReturn != NULL);
   AVERT(PoolGen, pgen);
-  AVERT(SegClass, class);
+  AVERT(SegClass, klass);
+  AVER(IsSubclass(klass, GCSeg));
   AVER(size > 0);
   AVERT(ArgList, args);
 
@@ -633,7 +614,7 @@ Res PoolGenAlloc(Seg *segReturn, PoolGen pgen, SegClass class, Size size,
   pref.high = FALSE;
   pref.zones = zones;
   pref.avoid = ZoneSetBlacklist(arena);
-  res = SegAlloc(&seg, class, &pref, size, pgen->pool, args);
+  res = SegAlloc(&seg, klass, &pref, size, pgen->pool, args);
   if (res != ResOK)
     return res;
 
@@ -880,17 +861,14 @@ Res PoolGenDescribe(PoolGen pgen, mps_lib_FILE *stream, Count depth)
 
 void LocusInit(Arena arena)
 {
-  GenDesc gen = &arena->topGen;
+  GenParamStruct params;
 
-  /* Can't check arena, because it's not been inited. */
-
-  gen->zones = ZoneSetEMPTY;
-  gen->capacity = 0; /* unused */
-  gen->mortality = 0.5;
-  RingInit(&gen->locusRing);
-  RingInit(&gen->segRing);
-  gen->sig = GenDescSig;
-  AVERT(GenDesc, gen);
+  AVER(arena != NULL); /* not initialized yet. */
+ 
+  params.capacity = 1; /* unused since top generation is not on any chain */
+  params.mortality = 0.5;
+ 
+  GenDescInit(&arena->topGen, &params);
 }
 
 
@@ -898,12 +876,9 @@ void LocusInit(Arena arena)
 
 void LocusFinish(Arena arena)
 {
-  GenDesc gen = &arena->topGen;
-
   /* Can't check arena, because it's being finished. */
-
-  gen->sig = SigInvalid;
-  RingFinish(&gen->locusRing);
+  AVER(arena != NULL);
+  GenDescFinish(&arena->topGen);
 }
 
 
@@ -919,7 +894,7 @@ Bool LocusCheck(Arena arena)
 
 /* C. COPYRIGHT AND LICENSE
  *
- * Copyright (C) 2001-2016 Ravenbrook Limited <http://www.ravenbrook.com/>.
+ * Copyright (C) 2001-2018 Ravenbrook Limited <http://www.ravenbrook.com/>.
  * All rights reserved.  This is an open source license.  Contact
  * Ravenbrook for commercial licensing options.
  * 

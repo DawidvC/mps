@@ -4,6 +4,64 @@ Release notes
 =============
 
 
+.. _release-notes-1.117:
+
+Release 1.117.0
+---------------
+
+New features
+............
+
+#. On FreeBSD, Linux and macOS, the MPS is now able to run in the
+   child process after ``fork()``. See :ref:`topic-thread-fork`.
+
+#. The MPS now supports Windows Vista or later; it no longer supports
+   Windows XP. (Microsoft's own support for Windows XP `expired in
+   April 2014`_.) This is so that we can use |InitOnceExecuteOnce|_ to
+   ensure thread-safe initialization.
+
+   .. _expired in April 2014: https://www.microsoft.com/en-gb/windowsforbusiness/end-of-xp-support
+   .. |InitOnceExecuteOnce| replace:: ``InitOnceExecuteOnce()``
+   .. _InitOnceExecuteOnce: https://docs.microsoft.com/en-us/windows/desktop/api/synchapi/nf-synchapi-initonceexecuteonce
+
+
+Interface changes
+.................
+
+#. The pool class MV (Manual Variable) is now deprecated.
+
+
+Other changes
+.............
+
+#. References from the MPS's own stack frames no longer :term:`pin
+   <pinning>` objects allocated by the :term:`client program` in
+   moving pools, which prevented them from moving. See job003525_.
+
+   .. _job003525: https://www.ravenbrook.com/project/mps/issue/job003525/
+
+#. Creation of :term:`arenas` is now thread-safe on Windows. See
+   job004056_.
+
+   .. _job004056: https://www.ravenbrook.com/project/mps/issue/job004056/
+
+#. :ref:`pool-awl` and :ref:`pool-lo` pools now detect (and assert on)
+   invalid :term:`exact references`. See job004070_.
+
+   .. _job004070: https://www.ravenbrook.com/project/mps/issue/job004070/
+
+#. The MPS now compiles without warnings on GCC version 7 with
+   ``-Wextra``. See job004076_.
+
+   .. _job004076: https://www.ravenbrook.com/project/mps/issue/job004076/
+
+#. Deprecated function :c:func:`mps_arena_roots_walk` no longer causes
+   :c:func:`mps_arena_formatted_objects_walk` to miss some objects. See
+   job004090_.
+
+   .. _job004090: https://www.ravenbrook.com/project/mps/issue/job004090/
+
+
 .. _release-notes-1.116:
 
 Release 1.116.0
@@ -21,7 +79,8 @@ New features
 #. The MPS no longer supports Linux 2.4 and 2.5. (These versions used
    LinuxThreads_ instead of POSIX threads; all major distributions
    have long since ceased to support these versions and so it is no
-   longer convenient to test against them.)
+   longer convenient to test against them.) See
+   :ref:`guide-overview-platforms`.
 
    .. _LinuxThreads: http://pauillac.inria.fr/~xleroy/linuxthreads/
 
@@ -158,6 +217,8 @@ New features
 Interface changes
 .................
 
+#. The pool class MV (Manual Variable) is no longer deprecated.
+
 #. The type of pool classes is now :c:type:`mps_pool_class_t`. The old
    name :c:type:`mps_class_t` is still available via a ``typedef``,
    but is deprecated.
@@ -232,8 +293,8 @@ Other changes
    .. _job003865: https://www.ravenbrook.com/project/mps/issue/job003865/
 
 #. :c:func:`mps_arena_has_addr` now returns the correct result for
-   objects allocated from the :ref:`pool-mfs`, :ref:`pool-mv`, and
-   :ref:`pool-mvff` pools. See job003866_.
+   objects allocated from the :ref:`pool-mfs`, MV (Manual Variable),
+   and :ref:`pool-mvff` pools. See job003866_.
 
    .. _job003866: https://www.ravenbrook.com/project/mps/issue/job003866/
 
@@ -341,8 +402,9 @@ Interface changes
    (meaning that there is no dependent object).
 
 #. It is now possible to configure the alignment of objects allocated
-   in a :ref:`pool-mv` pool, by passing the :c:macro:`MPS_KEY_ALIGN`
-   keyword argument to :c:func:`mps_pool_create_k`.
+   in an MV (Manual Variable) pool, by passing the
+   :c:macro:`MPS_KEY_ALIGN` keyword argument to
+   :c:func:`mps_pool_create_k`.
 
 #. The :ref:`pool-mvff` pool class takes a new keyword argument
    :c:macro:`MPS_KEY_SPARE`. This specifies the maximum proportion of
@@ -661,7 +723,7 @@ Interface changes
    :c:func:`mps_telemetry_control`, which is now deprecated. See
    :ref:`topic-telemetry`.
 
-#. The pool classes :ref:`pool-mv` and :ref:`pool-snc` are now
+#. The pool classes MV (Manual Variable) and :ref:`pool-snc` are now
    deprecated.
 
 #. Allocation frames are now deprecated. See :ref:`topic-frame`.
